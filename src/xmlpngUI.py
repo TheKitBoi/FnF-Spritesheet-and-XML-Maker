@@ -99,6 +99,7 @@ class MyApp(QMainWindow):
 
         self.ui.actionImport_Images.triggered.connect(self.open_frame_imgs)
         self.ui.action_import_existing.triggered.connect(self.open_existing_spsh_xml)
+        self.ui.actionImport_from_GIF.triggered.connect(self.open_gif)
 
         self.num_rows = 1 + self.num_labels//self.num_cols
         
@@ -151,6 +152,21 @@ class MyApp(QMainWindow):
         if prefs.get("theme", 'default') == 'dark':
             self.set_theme(get_stylesheet_from_file("assets/app-styles.qss"))
     
+
+    def open_gif(self):
+        gifpath = self.get_asset_path("Select the GIF file", "GIF images (*.gif)")
+        update_prog_bar, progbar = display_progress_bar(self, "Extracting sprite frames....")
+        QApplication.processEvents()
+
+        sprites = spritesheetutils.get_gif_frames(gifpath, update_prog_bar)
+        for i, spfr in enumerate(sprites):
+            spfr.frameparent = self
+            self.add_spriteframe(spfr)
+            update_prog_bar(50 + ((i+1)*50//len(sprites)), f"Adding frames from: {gifpath}")
+        progbar.close()
+        
+        self.ui.posename_btn.setDisabled(self.num_labels <= 0)
+
     def handle_psychengine_checkbox(self, checked):
         self.ui.uploadicongrid_btn.setEnabled(not checked)
     
@@ -195,37 +211,11 @@ class MyApp(QMainWindow):
     
     def show_settings(self):
         self.settings_widget.show()
-    
-    # def edit_frame_handler(self):
-    #     self.framexy_window = FrameAdjustWindow()
-    #     self.framexy_window.submitbtn.clicked.connect(self.get_frame_stuff)
-    #     self.framexy_window.show()
-    
-    # def get_frame_stuff(self):
-    #     self.framexy_window.close()
-    #     try:
-    #         fx = int(self.framexy_window.frame_x_input.text())
-    #         fy = int(self.framexy_window.frame_y_input.text())
-    #         fw = self.framexy_window.frame_w_input.text()
-    #         fh = self.framexy_window.frame_h_input.text()
-    #         for sel_lab in self.selected_labels:
-    #             sel_lab.framex = fx
-    #             sel_lab.framey = fy
-    #             sel_lab.framew = fw if fw == 'default' else int(fw)
-    #             sel_lab.frameh = fh if fh == 'default' else int(fh)
-            
-    #         for label in list(self.selected_labels):
-    #             label.select_checkbox.setChecked(False)
-    #     except ValueError:
-    #         self.display_msg_box(
-    #             window_title="Error!",
-    #             text="One of the values you entered was an invalid integer!",
-    #             icon=QMessageBox.Critical
-    #         )
 
     def handle_tab_change(self, newtabind):
         self.ui.actionClear_Spritesheet_Grid.setDisabled(newtabind != 0)
         self.ui.action_import_existing.setDisabled(newtabind != 0)
+        self.ui.actionImport_from_GIF.setDisabled(newtabind != 0)
         self.ui.actionImport_Images.setDisabled(newtabind != 0)
         self.ui.actionEdit_Frame_Properties.setDisabled(newtabind != 0 or len(self.selected_labels) <= 0)
         self.ui.menuExport.setDisabled(newtabind != 0)

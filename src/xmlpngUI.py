@@ -4,11 +4,13 @@ from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import QAction, QActionGroup, QApplication, QGridLayout, QInputDialog, QLineEdit, QMainWindow, QMessageBox, QProgressDialog, QPushButton, QSpacerItem, QLabel, QFileDialog
 from os import path
 from animationwindow import AnimationView
+import engine.icongridutils as icongridutils
+import engine.spritesheetutils as spritesheetutils
 # from frameorderscreen import FrameOrderScreen
 from xmltablewindow import XMLTableView
 import json
 
-import xmlpngengine
+import engine.xmlpngengine as xmlpngengine
 from mainUI import Ui_MainWindow
 from spriteframe import SpriteFrame
 from utils import SPRITEFRAME_SIZE, get_stylesheet_from_file
@@ -97,6 +99,7 @@ class MyApp(QMainWindow):
 
         self.ui.actionImport_Images.triggered.connect(self.open_frame_imgs)
         self.ui.action_import_existing.triggered.connect(self.open_existing_spsh_xml)
+        self.ui.actionImport_from_GIF.triggered.connect(self.open_gif)
 
         self.num_rows = 1 + self.num_labels//self.num_cols
         
@@ -139,6 +142,8 @@ class MyApp(QMainWindow):
         self.ui.actionFlipX.triggered.connect(lambda: self.flip_labels('X'))
         self.ui.actionFlipY.triggered.connect(lambda: self.flip_labels('Y'))
 
+        self.ui.use_psychengine_checkbox.clicked.connect(self.handle_psychengine_checkbox)
+
         # self.frame_order_screen = FrameOrderScreen()
         # self.ui.actionChange_Frame_Ordering.triggered.connect(self.show_frame_order_screen)
         # self.ui.actionChange_Frame_Ordering.setEnabled(len(self.labels) > 0)
@@ -146,6 +151,24 @@ class MyApp(QMainWindow):
         # Note: Add any extra windows before this if your want the themes to apply to them
         if prefs.get("theme", 'default') == 'dark':
             self.set_theme(get_stylesheet_from_file("assets/app-styles.qss"))
+    
+
+    def open_gif(self):
+        gifpath = self.get_asset_path("Select the GIF file", "GIF images (*.gif)")
+        update_prog_bar, progbar = display_progress_bar(self, "Extracting sprite frames....")
+        QApplication.processEvents()
+
+        sprites = spritesheetutils.get_gif_frames(gifpath, update_prog_bar)
+        for i, spfr in enumerate(sprites):
+            spfr.frameparent = self
+            self.add_spriteframe(spfr)
+            update_prog_bar(50 + ((i+1)*50//len(sprites)), f"Adding frames from: {gifpath}")
+        progbar.close()
+        
+        self.ui.posename_btn.setDisabled(self.num_labels <= 0)
+
+    def handle_psychengine_checkbox(self, checked):
+        self.ui.uploadicongrid_btn.setEnabled(not checked)
     
     # def show_frame_order_screen(self):
         # self.frame_order_screen.set_frame_dict(self.frame_dict)
@@ -188,37 +211,11 @@ class MyApp(QMainWindow):
     
     def show_settings(self):
         self.settings_widget.show()
-    
-    # def edit_frame_handler(self):
-    #     self.framexy_window = FrameAdjustWindow()
-    #     self.framexy_window.submitbtn.clicked.connect(self.get_frame_stuff)
-    #     self.framexy_window.show()
-    
-    # def get_frame_stuff(self):
-    #     self.framexy_window.close()
-    #     try:
-    #         fx = int(self.framexy_window.frame_x_input.text())
-    #         fy = int(self.framexy_window.frame_y_input.text())
-    #         fw = self.framexy_window.frame_w_input.text()
-    #         fh = self.framexy_window.frame_h_input.text()
-    #         for sel_lab in self.selected_labels:
-    #             sel_lab.framex = fx
-    #             sel_lab.framey = fy
-    #             sel_lab.framew = fw if fw == 'default' else int(fw)
-    #             sel_lab.frameh = fh if fh == 'default' else int(fh)
-            
-    #         for label in list(self.selected_labels):
-    #             label.select_checkbox.setChecked(False)
-    #     except ValueError:
-    #         self.display_msg_box(
-    #             window_title="Error!",
-    #             text="One of the values you entered was an invalid integer!",
-    #             icon=QMessageBox.Critical
-    #         )
 
     def handle_tab_change(self, newtabind):
         self.ui.actionClear_Spritesheet_Grid.setDisabled(newtabind != 0)
         self.ui.action_import_existing.setDisabled(newtabind != 0)
+        self.ui.actionImport_from_GIF.setDisabled(newtabind != 0)
         self.ui.actionImport_Images.setDisabled(newtabind != 0)
         self.ui.actionEdit_Frame_Properties.setDisabled(newtabind != 0 or len(self.selected_labels) <= 0)
         self.ui.menuExport.setDisabled(newtabind != 0)
@@ -277,7 +274,7 @@ class MyApp(QMainWindow):
                 update_prog_bar, progbar = display_progress_bar(self, "Extracting sprite frames....")
                 QApplication.processEvents()
 
-                sprites = xmlpngengine.split_spsh(imgpath, xmlpath, update_prog_bar)
+                sprites = spritesheetutils.split_spsh(imgpath, xmlpath, update_prog_bar)
                 for i, spfr in enumerate(sprites):
                     spfr.frameparent = self
                     self.add_spriteframe(spfr)
@@ -368,12 +365,6 @@ class MyApp(QMainWindow):
     def generate_xml(self):
         charname = self.ui.charname_textbox.text()
         charname = charname.strip()
-        settings_config = {
-            'isclip': self.settings_widget.isclip != 0,
-            'prefix_type': self.settings_widget.prefix_type,
-            'custom_prefix': self.settings_widget.custom_prefix,
-            'must_use_prefix': self.settings_widget.must_use_prefix != 0
-        }
         if self.num_labels > 0 and charname != '':
             savedir = QFileDialog.getExistingDirectory(caption="Save files to...")
             print("Stuff saved to: ", savedir)
@@ -385,8 +376,7 @@ class MyApp(QMainWindow):
                     self.labels, 
                     savedir, 
                     charname, 
-                    update_prog_bar,
-                    settings_config
+                    update_prog_bar
                 )
                 progbar.close()
                 if errmsg is None:
@@ -447,11 +437,52 @@ class MyApp(QMainWindow):
         self.ui.icongrid_holder_label.clear()
     
     def getNewIconGrid(self):
+        if self.ui.use_psychengine_checkbox.isChecked():
+            if len(self.iconpaths) > 0:
+                print("Using psych engine style icon grid generation....")
+                savepath, _ = QFileDialog.getSaveFileName(self, "Save as filename", filter="PNG files (*.png)")
+
+                stat, problemimg, exception_msg = icongridutils.makePsychEngineIconGrid(self.iconpaths, savepath)
+
+                if exception_msg is not None:
+                    self.display_msg_box(
+                        window_title="Error!", 
+                        text=f"An error occured: {exception_msg}",
+                        icon=QMessageBox.Critical
+                    )
+                else:
+                    if stat == 0:
+                        self.display_msg_box(
+                            window_title="Done!", 
+                            text="Your icon-grid has been generated!",
+                            icon=QMessageBox.Information
+                        )
+                        # display final image onto the icon display area 
+                        icongrid_pixmap = QPixmap(savepath)
+                        self.ui.icongrid_holder_label.setFixedSize(icongrid_pixmap.width(), icongrid_pixmap.height())
+                        self.ui.scrollAreaWidgetContents_2.setFixedSize(icongrid_pixmap.width(), icongrid_pixmap.height())
+                        self.ui.icongrid_holder_label.setPixmap(icongrid_pixmap)
+                    elif stat == 1:
+                        self.display_msg_box(
+                            window_title="Icon image error",
+                            text=f"The icon {problemimg} is bigger than 150x150 and couldn't be added to the final grid\nThe final grid was generated without it",
+                            icon=QMessageBox.Warning
+                        )
+            else:
+                self.display_msg_box(
+                    window_title="Error!", 
+                    text="Please select some icons",
+                    icon=QMessageBox.Critical
+                )
+            
+            # no need to continue past this if in psych-engine mode
+            return
+        
         if self.icongrid_path != '' and len(self.iconpaths) > 0:
             print("Valid!")
             # savedir = QFileDialog.getExistingDirectory(caption="Save New Icongrid to...")
             # if savedir != '':
-            stat, newinds, problemimg, exception_msg = xmlpngengine.appendIconToIconGrid(self.icongrid_path, self.iconpaths) #, savedir)
+            stat, newinds, problemimg, exception_msg = icongridutils.appendIconToGrid(self.icongrid_path, self.iconpaths) #, savedir)
             print("[DEBUG] Function finished with status: ", stat)
             errmsgs = [
                 'Icon grid was too full to insert a new icon', 
@@ -462,27 +493,27 @@ class MyApp(QMainWindow):
             if exception_msg is not None:
                 self.display_msg_box(
                     window_title="An Error occured", 
-                    text=("An Exception (Error) oeccured somewhere\nError message:"+exception_msg),
+                    text=("An Exception (Error) occurred somewhere\nError message:\n"+exception_msg),
                     icon=QMessageBox.Critical
-                )
-
-            if stat == 0:
-                self.display_msg_box(
-                    window_title="Done!", 
-                    text="Your icon-grid has been generated!\nYour icon's indices are {}".format(newinds),
-                    icon=QMessageBox.Information
-                )
-            elif stat == 4:
-                self.display_msg_box(
-                    window_title="Warning!", 
-                    text="One of your icons was smaller than the 150 x 150 icon size!\nHowever, your icon-grid is generated but the icon has been re-adjusted. \nYour icon's indices: {}".format(newinds),
-                    icon=QMessageBox.Warning
                 )
             else:
-                self.display_msg_box(
-                    window_title="Error!", 
-                    text=errmsgs[stat - 1].format(problemimg),
-                    icon=QMessageBox.Critical
+                if stat == 0:
+                    self.display_msg_box(
+                        window_title="Done!", 
+                        text="Your icon-grid has been generated!\nYour icon's indices are {}".format(newinds),
+                        icon=QMessageBox.Information
+                    )
+                elif stat == 4:
+                    self.display_msg_box(
+                        window_title="Warning!", 
+                        text="One of your icons was smaller than the 150 x 150 icon size!\nHowever, your icon-grid is generated but the icon has been re-adjusted. \nYour icon's indices: {}".format(newinds),
+                        icon=QMessageBox.Warning
+                    )
+                else:
+                    self.display_msg_box(
+                        window_title="Error!", 
+                        text=errmsgs[stat - 1].format(problemimg),
+                        icon=QMessageBox.Critical
                 )
             icongrid_pixmap = QPixmap(self.icongrid_path)
             self.ui.icongrid_holder_label.setFixedSize(icongrid_pixmap.width(), icongrid_pixmap.height())
@@ -502,7 +533,9 @@ class MyApp(QMainWindow):
         print("Got icon: ", self.iconpaths)
         if len(self.iconpaths) > 0:
             print("Valid selected")
-            self.ui.iconselected_label.setText("Number of\nicons selected:\n{}".format(len(self.iconpaths)))
+            self.ui.iconselected_label.setText("No. of\nicons selected:\n{}".format(len(self.iconpaths)))
+        else:
+            self.ui.iconselected_label.setText("No. of\nicons selected:\n0")
     
     def clearSelectedIcons(self):
         self.iconpaths = []

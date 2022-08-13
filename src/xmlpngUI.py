@@ -151,21 +151,69 @@ class MyApp(QMainWindow):
         # Note: Add any extra windows before this if your want the themes to apply to them
         if prefs.get("theme", 'default') == 'dark':
             self.set_theme(get_stylesheet_from_file("assets/app-styles.qss"))
+        
+    
+    def ranged_selection_handler(self, selected_spriteframe):
+        first_selected_spriteframe = None
+        for sprf in self.labels:
+            if sprf == selected_spriteframe:
+                break
+
+            if sprf.select_checkbox.checkState() != 0 and sprf != selected_spriteframe:
+                first_selected_spriteframe = sprf
+                break
+        
+        if first_selected_spriteframe is not None:
+            start_selecting = False
+            for sprf in self.labels:
+                if sprf == first_selected_spriteframe:
+                    start_selecting = True
+                
+                if start_selecting:
+                    # checks the box and adds it to the selected list
+                    sprf.select_checkbox.setChecked(1)
+                
+                if sprf == selected_spriteframe:
+                    break
+    
+    def ranged_deletion_handler(self, selected_spriteframe):
+        first_selected_spriteframe = None
+        for sprf in self.labels:
+            if sprf == selected_spriteframe:
+                break
+
+            if sprf.select_checkbox.checkState() != 0 and sprf != selected_spriteframe:
+                first_selected_spriteframe = sprf
+                break
+        
+        if first_selected_spriteframe is not None:
+            start_selecting = False
+            for sprf in self.labels:
+                if sprf == first_selected_spriteframe:
+                    start_selecting = True
+                
+                if start_selecting:
+                    # unchecks the box and removes it from the selected list
+                    sprf.select_checkbox.setChecked(0)
+                
+                if sprf == selected_spriteframe:
+                    break
     
 
     def open_gif(self):
         gifpath = self.get_asset_path("Select the GIF file", "GIF images (*.gif)")
-        update_prog_bar, progbar = display_progress_bar(self, "Extracting sprite frames....")
-        QApplication.processEvents()
-
-        sprites = spritesheetutils.get_gif_frames(gifpath, update_prog_bar)
-        for i, spfr in enumerate(sprites):
-            spfr.frameparent = self
-            self.add_spriteframe(spfr)
-            update_prog_bar(50 + ((i+1)*50//len(sprites)), f"Adding frames from: {gifpath}")
-        progbar.close()
-        
-        self.ui.posename_btn.setDisabled(self.num_labels <= 0)
+        if gifpath != '':
+            update_prog_bar, progbar = display_progress_bar(self, "Extracting sprite frames....")
+            QApplication.processEvents()
+            
+            sprites = spritesheetutils.get_gif_frames(gifpath, update_prog_bar)
+            for i, spfr in enumerate(sprites):
+                spfr.frameparent = self
+                self.add_spriteframe(spfr)
+                update_prog_bar(50 + ((i+1)*50//len(sprites)), f"Adding frames from: {gifpath}")
+            progbar.close()
+            
+            self.ui.posename_btn.setDisabled(self.num_labels <= 0)
 
     def handle_psychengine_checkbox(self, checked):
         self.ui.uploadicongrid_btn.setEnabled(not checked)
